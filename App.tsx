@@ -10,6 +10,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from './screens/LoginScreen';
 import HomeScreen from './screens/HomeScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import NotificationScreen from './screens/NotificationScreen';
+
+import { auth } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { requestUserPermission, setupNotificationListeners } from './lib/NotificationService';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,21 +24,46 @@ function App() {
   const [initialParams, setInitialParams] = useState({});
 
   useEffect(() => {
-    const checkLoginState = async () => {
+    // Listen for Firebase Auth changes
+    const checkSession = async (user: any) => {
       try {
-        const staffData = await AsyncStorage.getItem('staffData');
-        if (staffData) {
-          setInitialParams({ staff: JSON.parse(staffData) });
-          setInitialRoute('Home');
+        if (user) {
+          const staffDataStr = await AsyncStorage.getItem('staffData');
+          if (staffDataStr) {
+            const staffData = JSON.parse(staffDataStr);
+            setInitialParams({ staff: staffData });
+            setInitialRoute('Home');
+            console.log('[Auth] Session restored:', staffData.full_name);
+          } else {
+            console.log('[Auth] Firebase user found but no local profile data');
+            setInitialRoute('Login');
+          }
+        } else {
+          console.log('[Auth] No active session found');
+          setInitialRoute('Login');
         }
-      } catch (error) {
-        console.error('Error reading login state', error);
+      } catch (err) {
+        console.error('[Auth] Error during session check:', err);
+        setInitialRoute('Login');
       } finally {
         setIsLoading(false);
       }
     };
-    checkLoginState();
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      checkSession(user);
+    });
+
+    // Initialize Notifications
+    requestUserPermission();
+    const unsubscribeNotifications = setupNotificationListeners();
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeNotifications();
+    };
   }, []);
+
 
   if (isLoading) {
     return (
@@ -57,6 +87,7 @@ function App() {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Home" component={HomeScreen} initialParams={initialParams} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="Notification" component={NotificationScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>

@@ -1,6 +1,5 @@
-// export const BASE_URL = "http://192.168.1.7:4000/api";
-// export const IMAGE_BASE_URL = "http://192.168.1.7:4000";
+// This file now only holds non-sensitive external API keys.
+// Backend and Image handling has been moved to Firebase.
 
-export const BASE_URL = "https://watanstaffdashboard.onrender.com/api";
-export const IMAGE_BASE_URL = "https://watanstaffdashboard.onrender.com";
 export const GOOGLE_MAPS_API_KEY = "AIzaSyA-CXsyKpvFtpidpOkhOiIQGfXFO3O5lKA";
+

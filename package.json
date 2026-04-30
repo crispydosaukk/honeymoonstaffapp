@@ -12,9 +12,12 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
     "@react-native-community/geolocation": "^3.4.0",
+    "@react-native-firebase/app": "^24.0.0",
+    "@react-native-firebase/messaging": "^24.0.0",
     "@react-native/new-app-screen": "0.85.2",
     "@react-navigation/native": "^7.2.2",
     "@react-navigation/native-stack": "^7.14.12",
+    "firebase": "^12.12.1",
     "lucide-react-native": "^1.11.0",
     "react": "19.2.3",
     "react-native": "0.85.2",

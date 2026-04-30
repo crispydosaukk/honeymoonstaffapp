@@ -11,7 +11,9 @@ import {
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { IMAGE_BASE_URL } from '../api/config';
+
+
+import { auth } from '../lib/firebase';
 
 const { width } = Dimensions.get('window');
 
@@ -22,7 +24,9 @@ const ProfileScreen = ({ navigation, route }: any) => {
 
   const handleLogout = async () => {
     try {
+      await auth.signOut();
       await AsyncStorage.removeItem('staffData');
+      await AsyncStorage.removeItem('staffToken');
     } catch (error) {
       console.error('Error logging out:', error);
     }
@@ -31,6 +35,7 @@ const ProfileScreen = ({ navigation, route }: any) => {
       routes: [{ name: 'Login' }],
     });
   };
+
 
   const DetailItem = ({ label, value, fullWidth = false }: { label: string, value: string, fullWidth?: boolean }) => (
     <View style={[styles.detailItem, fullWidth && styles.fullWidthDetail]}>
@@ -63,9 +68,10 @@ const ProfileScreen = ({ navigation, route }: any) => {
             <View style={styles.avatarContainer}>
               {staff?.profile_image ? (
                 <Image 
-                  source={{ uri: `${IMAGE_BASE_URL}/uploads/${staff.profile_image}` }} 
+                  source={{ uri: staff.profile_image }} 
                   style={styles.avatar} 
                 />
+
               ) : (
                 <View style={[styles.avatar, { backgroundColor: '#D0B079', alignItems: 'center', justifyContent: 'center' }]}>
                   <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>{staff?.full_name?.charAt(0)}</Text>

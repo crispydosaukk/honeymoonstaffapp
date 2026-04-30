@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "346578008533",
+    "project_id": "watanstaff-prod",
+    "storage_bucket": "watanstaff-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:346578008533:android:ba7454f22d6f02e7b4e55c",
+        "android_client_info": {
+          "package_name": "com.watanstaff"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyg836GqzzpeuZJM9iB5ZR7ONyYH-emcA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

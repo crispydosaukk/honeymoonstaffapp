@@ -62,17 +62,18 @@ const LoginScreen = ({ navigation }: any) => {
         showAlert('Success', 'Login successful! Welcome back.', 'success');
         
         // Save staff data and token to AsyncStorage
-        await AsyncStorage.setItem('staffData', JSON.stringify(result.data.staff));
+        const staffObj = result.data;
+        await AsyncStorage.setItem('staffData', JSON.stringify(staffObj));
         await AsyncStorage.setItem('staffToken', result.data.token);
-
 
         setTimeout(() => {
           setAlertConfig(prev => ({ ...prev, visible: false }));
           navigation.reset({
             index: 0,
-            routes: [{ name: 'Home', params: { staff: result.data.staff, token: result.data.token } }],
+            routes: [{ name: 'Home', params: { staff: staffObj, token: result.data.token } }],
           });
         }, 1500);
+
       } else {
         showAlert('Access Denied', result.message || 'Invalid credentials provided.', 'error');
       }

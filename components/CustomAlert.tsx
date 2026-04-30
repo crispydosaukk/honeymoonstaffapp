@@ -4,6 +4,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   Dimensions,
   Animated,
@@ -70,38 +71,48 @@ const CustomAlert: React.FC<CustomAlertProps> = ({
   };
 
   return (
-    <Modal transparent visible={visible} animationType="fade">
-      <View style={styles.overlay}>
-        <Animated.View style={[styles.alertBox, { transform: [{ scale }] }]}>
-          <LinearGradient colors={getColors()} style={styles.iconCircle}>
-            <Text style={styles.iconText}>{getIcon()}</Text>
-          </LinearGradient>
-          
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
-          
-          {onConfirm ? (
-            <View style={styles.buttonRow}>
-              <TouchableOpacity onPress={onClose} style={[styles.button, styles.cancelButton]}>
-                <Text style={styles.cancelButtonText}>{cancelText}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={() => {
-                  onConfirm();
-                  onClose();
-                }} 
-                style={[styles.button, styles.confirmButton]}
-              >
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity 
+        style={styles.overlay} 
+        activeOpacity={1} 
+        onPress={onClose}
+      >
+        <TouchableWithoutFeedback>
+          <Animated.View style={[styles.alertBox, { transform: [{ scale }] }]}>
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+
+            <LinearGradient colors={getColors()} style={styles.iconCircle}>
+              <Text style={styles.iconText}>{getIcon()}</Text>
+            </LinearGradient>
+            
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.message}>{message}</Text>
+            
+            {onConfirm ? (
+              <View style={styles.buttonRow}>
+                <TouchableOpacity onPress={onClose} style={[styles.button, styles.cancelButton]}>
+                  <Text style={styles.cancelButtonText}>{cancelText}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => {
+                    onConfirm();
+                    onClose();
+                  }} 
+                  style={[styles.button, styles.confirmButton]}
+                >
+                  <Text style={styles.buttonText}>{confirmText}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={onClose} style={[styles.button, { width: '100%' }]}>
                 <Text style={styles.buttonText}>{confirmText}</Text>
               </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity onPress={onClose} style={[styles.button, { width: '100%' }]}>
-              <Text style={styles.buttonText}>{confirmText}</Text>
-            </TouchableOpacity>
-          )}
-        </Animated.View>
-      </View>
+            )}
+          </Animated.View>
+        </TouchableWithoutFeedback>
+      </TouchableOpacity>
     </Modal>
   );
 };
@@ -124,6 +135,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 15,
     elevation: 20,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 15,
+    right: 20,
+    zIndex: 10,
+    padding: 5,
+  },
+  closeButtonText: {
+    fontSize: 22,
+    color: '#94A3B8',
+    fontWeight: '600',
   },
   iconCircle: {
     width: 70,
