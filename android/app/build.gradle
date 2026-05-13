@@ -78,9 +78,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.watanstaff"
+    namespace "com.honeymoonstaff"
     defaultConfig {
-        applicationId "com.watanstaffapp"
+        applicationId "com.honeymoonstaffapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
@@ -94,10 +94,10 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('watan-release-key.keystore')
-            storePassword 'Watan@2025'
-            keyAlias 'watan-key-alias'
-            keyPassword 'Watan@2025'
+            storeFile file('honeymoon-release-key.keystore')
+            storePassword 'HoneyMoon@2025'
+            keyAlias 'honeymoon-key-alias'
+            keyPassword 'HoneyMoon@2025'
         }
     }
     buildTypes {

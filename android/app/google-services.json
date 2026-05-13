@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "346578008533",
-    "project_id": "watanstaff-prod",
-    "storage_bucket": "watanstaff-prod.firebasestorage.app"
+    "project_number": "583520600420",
+    "project_id": "honeymoonstaff-prod",
+    "storage_bucket": "honeymoonstaff-prod.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:346578008533:android:ba7454f22d6f02e7b4e55c",
+        "mobilesdk_app_id": "1:583520600420:android:f09923236b64c430c2fa71",
         "android_client_info": {
-          "package_name": "com.watanstaffapp"
+          "package_name": "com.honeymoonstaffapp"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCyg836GqzzpeuZJM9iB5ZR7ONyYH-emcA"
+          "current_key": "AIzaSyAj7cZD-cWS_mhLdynMixinO4HHPf8NIRs"
         }
       ],
       "services": {

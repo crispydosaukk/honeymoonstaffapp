@@ -1,4 +1,7 @@
 {
-  "name": "WatanStaff",
-  "displayName": "WatanStaff"
+  "name": "HoneyMoonStaff",
+  "displayName": "HoneyMoonStaff",
+  "ios": {
+    "bundleIdentifier": "com.honeymoonstaff.app"
+  }
 }
