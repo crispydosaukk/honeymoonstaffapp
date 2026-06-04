@@ -12,8 +12,9 @@ import HomeScreen from './screens/HomeScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import NotificationScreen from './screens/NotificationScreen';
 
-import { auth } from './lib/firebase';
+import { auth, db } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { requestUserPermission, setupNotificationListeners } from './lib/NotificationService';
 
 const Stack = createNativeStackNavigator();
@@ -28,14 +29,47 @@ function App() {
     const checkSession = async (user: any) => {
       try {
         if (user) {
-          const staffDataStr = await AsyncStorage.getItem('staffData');
+          let staffDataStr = await AsyncStorage.getItem('staffData');
+          let staffData = null;
+
           if (staffDataStr) {
-            const staffData = JSON.parse(staffDataStr);
+            staffData = JSON.parse(staffDataStr);
+          } else {
+            console.log('[Auth] Firebase user found but no local profile data. Fetching from Firestore...');
+            // Fetch additional staff data from Firestore directly
+            const staffDoc = await getDoc(doc(db, "staff", user.uid));
+            if (staffDoc.exists()) {
+              const data = staffDoc.data();
+              staffData = {
+                id: user.uid,
+                ...data,
+                token: await user.getIdToken()
+              };
+              // Save restored data to local storage
+              await AsyncStorage.setItem('staffData', JSON.stringify(staffData));
+              await AsyncStorage.setItem('staffToken', staffData.token);
+            } else {
+              // Try fetching as admin/manager
+              const adminDoc = await getDoc(doc(db, "users", user.uid));
+              if (adminDoc.exists()) {
+                const data = adminDoc.data();
+                staffData = {
+                  id: user.uid,
+                  ...data,
+                  token: await user.getIdToken()
+                };
+                await AsyncStorage.setItem('staffData', JSON.stringify(staffData));
+                await AsyncStorage.setItem('staffToken', staffData.token);
+              }
+            }
+          }
+
+          if (staffData) {
             setInitialParams({ staff: staffData });
             setInitialRoute('Home');
             console.log('[Auth] Session restored:', staffData.full_name);
           } else {
-            console.log('[Auth] Firebase user found but no local profile data');
+            console.log('[Auth] Firebase user found but profile not found in Firestore.');
             setInitialRoute('Login');
           }
         } else {

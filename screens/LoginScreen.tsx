@@ -48,14 +48,15 @@ const LoginScreen = ({ navigation }: any) => {
   };
 
   const handleLogin = async () => {
-    if (!email || !password) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
       showAlert('Required', 'Please enter your email and password to continue.', 'warning');
       return;
     }
 
     setLoading(true);
     try {
-      const result = await staffLogin(email, password);
+      const result = await staffLogin(trimmedEmail, password);
       setLoading(false);
 
       if (result.status === 1 && result.data) {
@@ -136,6 +137,7 @@ const LoginScreen = ({ navigation }: any) => {
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
               />
             </View>
           </View>
@@ -151,6 +153,8 @@ const LoginScreen = ({ navigation }: any) => {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Text style={{ fontSize: 16 }}>{showPassword ? '👁️‍🗨️' : '👁️'}</Text>

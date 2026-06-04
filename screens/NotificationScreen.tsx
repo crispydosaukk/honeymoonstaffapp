@@ -21,7 +21,9 @@ import {
   updateDoc, 
   doc,
   writeBatch,
-  serverTimestamp
+  serverTimestamp,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import Animated, { 
   useAnimatedStyle,
@@ -53,11 +55,11 @@ const NotificationScreen = ({ navigation }: any) => {
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    // Show notifications that haven't been "read" yet
     const q = query(
       collection(db, "notifications"),
       where("staff_id", "==", auth.currentUser.uid),
-      where("status", "!=", "read")
+      orderBy("sent_at", "desc"),
+      limit(100)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -68,6 +70,7 @@ const NotificationScreen = ({ navigation }: any) => {
           ...docSnap.data()
         }))
         .filter((n: any) => {
+          if (n.status === 'read') return false; // Filter out read notifications locally
           if (n.status === 'scheduled' && n.scheduled_for) {
             const scheduledTime = n.scheduled_for.toDate ? n.scheduled_for.toDate().getTime() : new Date(n.scheduled_for).getTime();
             return Date.now() >= scheduledTime; // Show if the time has passed
@@ -75,7 +78,7 @@ const NotificationScreen = ({ navigation }: any) => {
           return n.status !== 'scheduled';
         }) as any[];
 
-      // Sort in JS
+      // Sort in JS (fallback just in case, though query already ordered by sent_at)
       list.sort((a, b) => {
         const timeA = a.sent_at?.toDate ? a.sent_at.toDate().getTime() : 0;
         const timeB = b.sent_at?.toDate ? b.sent_at.toDate().getTime() : 0;

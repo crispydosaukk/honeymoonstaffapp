@@ -7,13 +7,16 @@ import {
   StatusBar,
   Image,
   Dimensions,
+  Alert,
+  Modal,
+  Pressable
 } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, updateDoc } from 'firebase/firestore';
 
-
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 
 const { width } = Dimensions.get('window');
 
@@ -21,8 +24,14 @@ const ProfileScreen = ({ navigation, route }: any) => {
   const insets = useSafeAreaInsets();
   const staff = route?.params?.staff;
   const [activeTab, setActiveTab] = useState('Personal');
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
+  const isClockedIn = route?.params?.isClockedIn;
+  const activeSession = route?.params?.activeSession;
 
-  const handleLogout = async () => {
+  const performLogout = async () => {
+    setIsLoggingOut(true);
     try {
       await auth.signOut();
       await AsyncStorage.removeItem('staffData');
@@ -30,10 +39,36 @@ const ProfileScreen = ({ navigation, route }: any) => {
     } catch (error) {
       console.error('Error logging out:', error);
     }
+    setLogoutModalVisible(false);
     navigation.reset({
       index: 0,
       routes: [{ name: 'Login' }],
     });
+  };
+
+  const confirmLogoutAction = async () => {
+    if (isClockedIn && activeSession) {
+      try {
+        // Auto clock out logic
+        const now = new Date();
+        const cinDate = activeSession.clock_in?.toDate ? activeSession.clock_in.toDate() : new Date(activeSession.clock_in);
+        const diffMin = Math.max(1, Math.round((now.getTime() - cinDate.getTime()) / 60000));
+        const safeDiffMin = Math.min(diffMin, 1440);
+        
+        await updateDoc(doc(db, "attendance", activeSession.id), {
+          clock_out: now,
+          total_minutes: Math.max(0, safeDiffMin),
+          location_out: "Auto logged out"
+        });
+      } catch (e) {
+        console.error("Error auto clocking out on logout:", e);
+      }
+    }
+    await performLogout();
+  };
+
+  const handleLogout = () => {
+    setLogoutModalVisible(true);
   };
 
 
@@ -143,6 +178,56 @@ const ProfileScreen = ({ navigation, route }: any) => {
           </TouchableOpacity>
         </Animated.View>
       </View>
+
+      {/* Custom Logout Confirmation Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={logoutModalVisible}
+        onRequestClose={() => setLogoutModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View 
+            entering={ZoomIn.duration(200).springify()}
+            exiting={ZoomOut.duration(150)}
+            style={styles.modalContent}
+          >
+            <View style={styles.modalIconContainer}>
+              <Text style={{ fontSize: 32 }}>🚪</Text>
+            </View>
+            
+            <Text style={styles.modalTitle}>
+              {isClockedIn ? "Active Shift Detected" : "Confirm Logout"}
+            </Text>
+            
+            <Text style={styles.modalMessage}>
+              {isClockedIn 
+                ? "You are currently clocked in. Logging out will automatically clock you out of your active session. Do you wish to proceed?"
+                : "Are you sure you want to log out of your profile?"}
+            </Text>
+            
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalCancelButton]} 
+                onPress={() => setLogoutModalVisible(false)}
+                disabled={isLoggingOut}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalConfirmButton]} 
+                onPress={confirmLogoutAction}
+                disabled={isLoggingOut}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {isLoggingOut ? "Logging out..." : (isClockedIn ? "Log Out & Clock Out" : "Log Out")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -381,6 +466,83 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#F1F5F9',
+  },
+  modalConfirmButton: {
+    backgroundColor: '#EF4444',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modalCancelText: {
+    color: '#475569',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  modalConfirmText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
 
