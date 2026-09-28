@@ -38,7 +38,8 @@ import {
   doc,
   serverTimestamp
 } from 'firebase/firestore';
-import { calcCalculatedMinutes } from '../lib/timeRounding';
+import { calcCalculatedMinutes, getCalculatedTime } from '../lib/timeRounding';
+
 // No longer need width/height if not used
 Dimensions.get('window');
 
@@ -89,21 +90,6 @@ const calcSessionMinutes = (record: any): number => {
     return calcCalculatedMinutes(record.clock_in, record.clock_out);
   }
   return 0;
-};
-
-const getAutoLogoutTime = (clockIn: Date): Date => {
-  const hour = clockIn.getHours();
-  const logoutTime = new Date(clockIn.getTime());
-  
-  if (hour >= 0 && hour < 18) {
-    // Clocked in between 00:00 and 17:59 -> Auto logout at next midnight
-    logoutTime.setHours(24, 0, 0, 0); 
-  } else {
-    // Clocked in between 18:00 and 23:59 -> Auto logout at next 18:00 (6 PM)
-    logoutTime.setDate(logoutTime.getDate() + 1);
-    logoutTime.setHours(18, 0, 0, 0);
-  }
-  return logoutTime;
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -268,26 +254,6 @@ const HomeScreen = ({ navigation, route }: any) => {
       setYesterdayLog(yesterdayLogs);
 
       if (active) {
-        const cinDate = active.clock_in?.toDate ? active.clock_in.toDate() : new Date(active.clock_in);
-        const autoLogout = getAutoLogoutTime(cinDate);
-        const now = new Date();
-        
-        if (now >= autoLogout) {
-          console.log(`[Clock] Auto-logout triggered for session: ${active.id}`);
-          const diffMin = Math.max(1, Math.round((autoLogout.getTime() - cinDate.getTime()) / 60000));
-          const safeDiffMin = Math.min(diffMin, 1440);
-          
-          updateDoc(doc(db, "attendance", active.id), {
-            clock_out: autoLogout,
-            total_minutes: Math.max(0, safeDiffMin),
-            location_out: "System Auto-Logout"
-          }).catch(err => console.error("Auto logout error:", err));
-          
-          active = undefined;
-        }
-      }
-
-      if (active) {
         console.log(`[Clock] Active session found: ${active.id} (Started: ${active.clock_in?.toDate ? active.clock_in.toDate() : active.clock_in})`);
         setActiveSession(active);
         setIsClockedIn(true);
@@ -315,15 +281,15 @@ const HomeScreen = ({ navigation, route }: any) => {
 
     // Use a Ref to store the latest notifications so the setInterval can access them safely
     const allNotificationsRef = { current: [] as any[] };
-    
+
     // Helper function to show banner smoothly
     const triggerBanner = async (notif: any) => {
       shownNotifIds.current.add(notif.id);
-      
+
       // Show native OS notification instead of custom in-app banner
       try {
         const { default: notifee, AndroidImportance, AndroidVisibility } = await import('@notifee/react-native');
-        
+
         await notifee.displayNotification({
           title: notif.title || 'New Notification',
           body: notif.body || 'You have a new message',
@@ -619,13 +585,16 @@ const HomeScreen = ({ navigation, route }: any) => {
         if (!activeSession?.id) throw new Error("No active session found to clock out.");
 
         const cinDate = activeSession.clock_in?.toDate ? activeSession.clock_in.toDate() : new Date(activeSession.clock_in);
-        const diffMin = Math.max(1, Math.round((now.getTime() - cinDate.getTime()) / 60000));
-        // Safety cap: no single session should exceed 24 hours (1440 min)
-        const safeDiffMin = Math.min(diffMin, 1440);
+        // Apply the same 30-min slot rounding to clock-out time
+        const calcIn = getCalculatedTime(cinDate);
+        const calcOut = getCalculatedTime(now);
+        const calcDiffMin = (calcIn && calcOut)
+          ? Math.max(0, Math.min(Math.floor((calcOut.getTime() - calcIn.getTime()) / 60000), 1440))
+          : Math.max(1, Math.min(Math.round((now.getTime() - cinDate.getTime()) / 60000), 1440));
 
         await updateDoc(doc(db, "attendance", activeSession.id), {
           clock_out: serverTimestamp(),
-          total_minutes: Math.max(0, safeDiffMin),
+          total_minutes: calcDiffMin,
           location_out: locString
         });
         setProcessingStep('🎉 Clocked Out!');
@@ -661,13 +630,22 @@ const HomeScreen = ({ navigation, route }: any) => {
 
 
 
+  // Yesterday's log display — show calculated (rounded) clock-in and clock-out times
   const yesterdayIn = yesterdayLog.length > 0 && yesterdayLog[yesterdayLog.length - 1].clock_in
-    ? formatTime(yesterdayLog[yesterdayLog.length - 1].clock_in)
+    ? (() => {
+        const rawIn = yesterdayLog[yesterdayLog.length - 1].clock_in;
+        const calcIn = getCalculatedTime(rawIn);
+        return calcIn ? formatTime(calcIn) : formatTime(rawIn);
+      })()
     : '--';
   const yesterdayOut = yesterdayLog.length > 0 && yesterdayLog[0].clock_out
-    ? formatTime(yesterdayLog[0].clock_out)
+    ? (() => {
+        const rawOut = yesterdayLog[0].clock_out;
+        const calcOut = getCalculatedTime(rawOut);
+        return calcOut ? formatTime(calcOut) : formatTime(rawOut);
+      })()
     : '--';
-  const yesterdayTotal = yesterdayLog.reduce((sum: number, r: any) => sum + calcSessionMinutes(r), 0);
+  const yesterdayTotal = yesterdayLog.reduce((sum: number, r: any) => sum + (r.total_minutes != null ? r.total_minutes : calcSessionMinutes(r)), 0);
   const yesterdayDateStr = (() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
