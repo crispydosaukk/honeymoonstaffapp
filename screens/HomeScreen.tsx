@@ -92,6 +92,11 @@ const calcSessionMinutes = (record: any): number => {
   return 0;
 };
 
+const getAutoLogoutTime = (clockIn: Date, autoLogoutHours: number = 15): Date => {
+  const logoutTime = new Date(clockIn.getTime() + autoLogoutHours * 60 * 60 * 1000);
+  return logoutTime;
+};
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 const HomeScreen = ({ navigation, route }: any) => {
@@ -126,8 +131,26 @@ const HomeScreen = ({ navigation, route }: any) => {
   }));
 
   const [staffData, setStaffData] = useState(staff);
+  const [restaurantData, setRestaurantData] = useState<any>(null);
+  const restaurantDataRef = useRef<any>(null);
+  const isClockedInRef = useRef(false);
+  const activeSessionRef = useRef<any>(null);
+  const isAutoLoggingOut = useRef(false);
+  const outOfRangeBreachCount = useRef(0);
   const lastLocation = useRef<any>(null);
   const locationWatchId = useRef<number | null>(null);
+
+  useEffect(() => {
+    isClockedInRef.current = isClockedIn;
+  }, [isClockedIn]);
+
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
+
+  useEffect(() => {
+    restaurantDataRef.current = restaurantData;
+  }, [restaurantData]);
   const [showConfirmLogout, setShowConfirmLogout] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -202,6 +225,18 @@ const HomeScreen = ({ navigation, route }: any) => {
       }
     }, (err) => console.error("[Home] Profile sync error:", err));
 
+    // Restaurant profile listener for dynamic geofence radius and auto logout hours
+    let unsubRestaurant: (() => void) | undefined;
+    if (staffData?.restaurant_id) {
+      unsubRestaurant = onSnapshot(doc(db, "restaurants", staffData.restaurant_id), (restSnap) => {
+        if (restSnap.exists()) {
+          const rData = restSnap.data();
+          setRestaurantData(rData);
+          restaurantDataRef.current = rData;
+        }
+      });
+    }
+
     if (!auth.currentUser) {
       console.warn("[Home] No Firebase Auth session. Redirecting...");
       AsyncStorage.removeItem('staffData');
@@ -252,6 +287,30 @@ const HomeScreen = ({ navigation, route }: any) => {
       });
 
       setYesterdayLog(yesterdayLogs);
+
+      if (active) {
+        const cinDate = active.clock_in?.toDate ? active.clock_in.toDate() : new Date(active.clock_in);
+        const autoHours = restaurantData?.auto_logout_hours !== undefined 
+          ? parseFloat(restaurantData.auto_logout_hours) 
+          : 15;
+        const autoLogout = getAutoLogoutTime(cinDate, autoHours);
+        const now = new Date();
+
+        if (now >= autoLogout) {
+          console.log(`[Clock] Auto-logout triggered for session: ${active.id}`);
+          const diffMin = Math.max(1, Math.round((autoLogout.getTime() - cinDate.getTime()) / 60000));
+          const safeDiffMin = Math.min(diffMin, 1440);
+
+          updateDoc(doc(db, "attendance", active.id), {
+            clock_out: autoLogout,
+            total_minutes: Math.max(0, safeDiffMin),
+            location_out: "System Auto-Logout",
+            auto_logout_reason: `Shift exceeded maximum duration (${autoHours} hours)`
+          }).catch(err => console.error("Auto logout error:", err));
+
+          active = undefined;
+        }
+      }
 
       if (active) {
         console.log(`[Clock] Active session found: ${active.id} (Started: ${active.clock_in?.toDate ? active.clock_in.toDate() : active.clock_in})`);
@@ -374,6 +433,7 @@ const HomeScreen = ({ navigation, route }: any) => {
       if (unsubProfile) unsubProfile();
       if (unsubAttendance) unsubAttendance();
       if (unsubNotif) unsubNotif();
+      if (unsubRestaurant) unsubRestaurant();
       if (releaseMonitor) clearInterval(releaseMonitor);
     };
 
@@ -412,6 +472,74 @@ const HomeScreen = ({ navigation, route }: any) => {
       );
     };
 
+    const checkGeofenceAutoLogout = async (curLat: number, curLng: number) => {
+      if (!isClockedInRef.current || !activeSessionRef.current || isAutoLoggingOut.current) {
+        outOfRangeBreachCount.current = 0;
+        return;
+      }
+
+      const restData = restaurantDataRef.current;
+      if (!restData || !restData.latitude || !restData.longitude) return;
+
+      const restLat = parseFloat(restData.latitude);
+      const restLng = parseFloat(restData.longitude);
+      if (isNaN(restLat) || isNaN(restLng)) return;
+
+      const allowedRadius = restData.geofence_radius !== undefined ? parseFloat(restData.geofence_radius) : 50;
+      const distance = calculateDistance(curLat, curLng, restLat, restLng);
+
+      // Buffer of 15m to account for GPS drift
+      const buffer = 15;
+      if (distance > (allowedRadius + buffer)) {
+        outOfRangeBreachCount.current += 1;
+        console.log(`[Geofence] Out of range detected (${Math.round(distance)}m > ${allowedRadius}m + ${buffer}m). Breach count: ${outOfRangeBreachCount.current}`);
+
+        // Require 2 consecutive out-of-range checks OR if distance is far out (> allowedRadius + 50m)
+        if (outOfRangeBreachCount.current >= 2 || distance > (allowedRadius + 50)) {
+          isAutoLoggingOut.current = true;
+          outOfRangeBreachCount.current = 0;
+
+          try {
+            const active = activeSessionRef.current;
+            if (!active?.id) return;
+
+            const cinDate = active.clock_in?.toDate ? active.clock_in.toDate() : new Date(active.clock_in);
+            const now = new Date();
+            const diffMin = Math.max(1, Math.round((now.getTime() - cinDate.getTime()) / 60000));
+            const safeDiffMin = Math.min(diffMin, 1440);
+
+            console.log(`[Geofence] Auto-logout triggered for staff session: ${active.id} (Distance: ${Math.round(distance)}m, Allowed: ${Math.round(allowedRadius)}m)`);
+
+            await updateDoc(doc(db, "attendance", active.id), {
+              clock_out: now,
+              total_minutes: Math.max(0, safeDiffMin),
+              location_out: "System Auto-Logout",
+              distance_out_m: Math.round(distance),
+              auto_logout_reason: `Left dynamic geofence radius (${Math.round(distance)}m > ${Math.round(allowedRadius)}m)`
+            });
+
+            setActiveSession(null);
+            setIsClockedIn(false);
+            stopTimer();
+
+            setAlertConfig({
+              visible: true,
+              title: 'AUTO CLOCKED OUT',
+              message: `You were automatically clocked out because you left the restaurant area (${Math.round(distance)}m away from ${restData.restaurant_name || 'the restaurant'}, radius: ${Math.round(allowedRadius)}m).`,
+              type: 'warning'
+            });
+          } catch (err) {
+            console.error("[Geofence Auto-Logout Error]:", err);
+          } finally {
+            isAutoLoggingOut.current = false;
+          }
+        }
+      } else {
+        // User is back within allowed radius, reset breach counter
+        outOfRangeBreachCount.current = 0;
+      }
+    };
+
     const startWatching = () => {
       if (locationWatchId.current) Geolocation.clearWatch(locationWatchId.current);
       locationWatchId.current = Geolocation.watchPosition(
@@ -419,6 +547,9 @@ const HomeScreen = ({ navigation, route }: any) => {
           lastLocation.current = pos;
           const { latitude, longitude } = pos.coords;
           reverseGeocode(latitude, longitude);
+
+          // Dynamic geofence auto-logout check
+          checkGeofenceAutoLogout(latitude, longitude);
         },
         err => console.log("[GPS Watch] Error:", err),
         { enableHighAccuracy: true, distanceFilter: 10, interval: 10000, fastestInterval: 5000 }
@@ -555,10 +686,12 @@ const HomeScreen = ({ navigation, route }: any) => {
       if (isNaN(restLat) || isNaN(restLng)) throw new Error("Restaurant location is not set in dashboard.");
 
       distance = calculateDistance(curLat, curLng, restLat, restLng);
-      // Allow 100m buffer for GPS drift
-      if (distance > 100) {
+      // Dynamic geofence radius from restaurant data, default to 50m
+      const allowedRadius = restData.geofence_radius !== undefined ? parseFloat(restData.geofence_radius) : 50;
+
+      if (distance > allowedRadius) {
         const action = isClockedIn ? 'clock out' : 'clock in';
-        throw new Error(`Out of Range: You are ${Math.round(distance)}m away from ${restData.restaurant_name}. Please move within 100m to ${action}.`);
+        throw new Error(`Out of Range: You are ${Math.round(distance)}m away from ${restData.restaurant_name}. Please move within ${Math.round(allowedRadius)}m to ${action}.`);
       }
 
       // 3. DATABASE SAVE
@@ -638,12 +771,14 @@ const HomeScreen = ({ navigation, route }: any) => {
         return calcIn ? formatTime(calcIn) : formatTime(rawIn);
       })()
     : '--';
-  const yesterdayOut = yesterdayLog.length > 0 && yesterdayLog[0].clock_out
-    ? (() => {
-        const rawOut = yesterdayLog[0].clock_out;
+  const yesterdayOutRecord = yesterdayLog.length > 0 ? yesterdayLog[0] : null;
+  const isAutoLogout = yesterdayOutRecord?.location_out === "System Auto-Logout" && (!yesterdayOutRecord?.edit_reason || yesterdayOutRecord.edit_reason.trim() === "");
+  const yesterdayOut = yesterdayOutRecord?.clock_out
+    ? (isAutoLogout ? '--' : (() => {
+        const rawOut = yesterdayOutRecord.clock_out;
         const calcOut = getCalculatedTime(rawOut);
         return calcOut ? formatTime(calcOut) : formatTime(rawOut);
-      })()
+      })())
     : '--';
   const yesterdayTotal = yesterdayLog.reduce((sum: number, r: any) => sum + (r.total_minutes != null ? r.total_minutes : calcSessionMinutes(r)), 0);
   const yesterdayDateStr = (() => {
@@ -783,6 +918,7 @@ const HomeScreen = ({ navigation, route }: any) => {
               <View>
                 <Text style={styles.logLabelSmall}>OUT</Text>
                 <Text style={styles.logValue}>{yesterdayOut}</Text>
+                {isAutoLogout && <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: '700', marginTop: 1 }}>(AUTO LOGOUTED)</Text>}
               </View>
             </View>
             <View style={styles.logDivider} />
